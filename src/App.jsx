@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
 const CLIENT_ID = import.meta.env.VITE_SPOTIFY_CLIENT_ID;
-const REDIRECT_URI = import.meta.env.VITE_SPOTIFY_REDIRECT_URI;
+const REDIRECT_URI = "https://temper-4men6121h-tafra1s-projects.vercel.app/callback";
 const SCOPES = [
   "user-read-currently-playing",
   "user-read-playback-state",
