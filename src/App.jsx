@@ -1,16 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 
-// ─── CONFIG ───────────────────────────────────────────────────────────────────
 const CLIENT_ID = import.meta.env.VITE_SPOTIFY_CLIENT_ID;
 const REDIRECT_URI = "https://temper-lyart.vercel.app/callback";
-const GETSONGBPM_KEY = import.meta.env.VITE_GETSONGBPM_KEY;
-const SCOPES = [
-  "user-read-currently-playing",
-  "user-read-playback-state",
-  "user-modify-playback-state",
-].join(" ");
+const SCOPES = ["user-read-currently-playing","user-read-playback-state","user-modify-playback-state"].join(" ");
 
-// ─── FALLBACK DATABASE ────────────────────────────────────────────────────────
 const TRACKS = [
   { id: 1, title: "Your Love", artist: "Frankie Knuckles", bpm: 120, key: 9, mode: 0, energy: 0.72, dance: 0.82, intensity: 0.65, genre: "house" },
   { id: 2, title: "Move Your Body", artist: "Marshall Jefferson", bpm: 125, key: 4, mode: 0, energy: 0.78, dance: 0.86, intensity: 0.70, genre: "house" },
@@ -136,292 +129,207 @@ const TRACKS = [
   { id: 122, title: "One Blood", artist: "Junior Reid", bpm: 90, key: 5, mode: 0, energy: 0.65, dance: 0.75, intensity: 0.60, genre: "reggae" },
 ];
 
-// ─── CAMELOT ──────────────────────────────────────────────────────────────────
-const CAMELOT = {
-  0:{major:"8B",minor:"5A"},1:{major:"3B",minor:"12A"},2:{major:"10B",minor:"7A"},
-  3:{major:"5B",minor:"2A"},4:{major:"12B",minor:"9A"},5:{major:"7B",minor:"4A"},
-  6:{major:"2B",minor:"11A"},7:{major:"9B",minor:"6A"},8:{major:"4B",minor:"1A"},
-  9:{major:"11B",minor:"8A"},10:{major:"6B",minor:"3A"},11:{major:"1B",minor:"10A"},
-};
+const CAMELOT = {0:{major:"8B",minor:"5A"},1:{major:"3B",minor:"12A"},2:{major:"10B",minor:"7A"},3:{major:"5B",minor:"2A"},4:{major:"12B",minor:"9A"},5:{major:"7B",minor:"4A"},6:{major:"2B",minor:"11A"},7:{major:"9B",minor:"6A"},8:{major:"4B",minor:"1A"},9:{major:"11B",minor:"8A"},10:{major:"6B",minor:"3A"},11:{major:"1B",minor:"10A"}};
 const KEY_NAMES = ["C","Db","D","Eb","E","F","F#","G","Ab","A","Bb","B"];
-// GetSongBPM uses letter notation
-const KEY_MAP = { "C":0,"C#":1,"Db":1,"D":2,"D#":3,"Eb":3,"E":4,"F":5,"F#":6,"Gb":6,"G":7,"G#":8,"Ab":8,"A":9,"A#":10,"Bb":10,"B":11 };
+const KEY_MAP = {"C":0,"C#":1,"Db":1,"D":2,"D#":3,"Eb":3,"E":4,"F":5,"F#":6,"Gb":6,"G":7,"G#":8,"Ab":8,"A":9,"A#":10,"Bb":10,"B":11};
 
-function getCamelot(key, mode) {
-  return CAMELOT[key]?.[mode === 0 ? "minor" : "major"] || "?";
-}
-function camelotDistance(k1, m1, k2, m2) {
-  const c1 = getCamelot(k1,m1), c2 = getCamelot(k2,m2);
-  if (c1==="?"||c2==="?") return 3;
-  const n1=parseInt(c1),n2=parseInt(c2),t1=c1.slice(-1),t2=c2.slice(-1);
-  if (t1!==t2) return Math.min(Math.abs(n1-n2),12-Math.abs(n1-n2))+1;
-  return Math.min(Math.abs(n1-n2),12-Math.abs(n1-n2));
-}
+function getCamelot(key,mode){ return CAMELOT[key]?.[mode===0?"minor":"major"]||"?"; }
+function camelotDistance(k1,m1,k2,m2){ const c1=getCamelot(k1,m1),c2=getCamelot(k2,m2); if(c1==="?"||c2==="?") return 3; const n1=parseInt(c1),n2=parseInt(c2),t1=c1.slice(-1),t2=c2.slice(-1); if(t1!==t2) return Math.min(Math.abs(n1-n2),12-Math.abs(n1-n2))+1; return Math.min(Math.abs(n1-n2),12-Math.abs(n1-n2)); }
 
-// ─── GETSONGBPM API ───────────────────────────────────────────────────────────
-async function fetchSongData(title, artist) {
+// ── Proxy calls (contourne CORS)
+async function bpmSearch(query) {
   try {
-    const query = encodeURIComponent(`${title} ${artist}`);
-    const res = await fetch(`https://api.getsongbpm.com/search/?api_key=${GETSONGBPM_KEY}&type=both&lookup=${query}`);
-    const data = await res.json();
-    const songs = data?.search || [];
-    if (songs.length === 0) return null;
-    // Cherche la meilleure correspondance
-    const match = songs.find(s =>
-      s.song_title?.toLowerCase().includes(title.toLowerCase().split(" ")[0]) ||
-      s.artist?.artist_name?.toLowerCase().includes(artist.toLowerCase().split(" ")[0])
-    ) || songs[0];
-    if (!match) return null;
-    // Fetch détails complets
-    const detailRes = await fetch(`https://api.getsongbpm.com/song/?api_key=${GETSONGBPM_KEY}&id=${match.id}`);
-    const detail = await detailRes.json();
-    const song = detail?.song;
-    if (!song) return null;
-    const bpm = parseFloat(song.tempo);
-    const keyStr = song.key_of || "";
-    const isMinor = keyStr.toLowerCase().includes("minor") || keyStr.includes("m");
-    const keyLetter = keyStr.replace(/\s*(major|minor|maj|min|m)\s*/i,"").trim();
-    const key = KEY_MAP[keyLetter] ?? -1;
-    if (!bpm || key === -1) return null;
-    return {
-      bpm,
-      key,
-      mode: isMinor ? 0 : 1,
-      genre: match.genre || "unknown",
-    };
-  } catch(e) {
-    return null;
-  }
-}
-
-// Recherche de suggestions via GetSongBPM
-async function searchSongBPM(query) {
-  try {
-    const res = await fetch(`https://api.getsongbpm.com/search/?api_key=${GETSONGBPM_KEY}&type=both&lookup=${encodeURIComponent(query)}`);
+    const res = await fetch(`/api/bpm?endpoint=search&type=both&lookup=${encodeURIComponent(query)}`);
     const data = await res.json();
     return data?.search || [];
-  } catch(e) {
-    return [];
-  }
+  } catch(e) { return []; }
 }
 
-// ─── SCORING ENGINE ───────────────────────────────────────────────────────────
+async function bpmSong(id) {
+  try {
+    const res = await fetch(`/api/bpm?endpoint=song&id=${id}`);
+    const data = await res.json();
+    return data?.song || null;
+  } catch(e) { return null; }
+}
+
+function parseSongMeta(song) {
+  if (!song) return null;
+  const bpm = parseFloat(song.tempo);
+  const keyStr = song.key_of || "";
+  const isMinor = keyStr.toLowerCase().includes("minor") || /\bm\b/i.test(keyStr);
+  const keyLetter = keyStr.replace(/\s*(major|minor|maj|min)\s*/gi,"").trim();
+  const key = KEY_MAP[keyLetter] ?? -1;
+  if (!bpm || key === -1) return null;
+  return { bpm, key, mode: isMinor ? 0 : 1, genre: song.genre || "unknown" };
+}
+
 function scoreTrack(current, candidate, intention, tolerance) {
   const isSafe = tolerance === "safe";
   const bpmDiff = Math.abs(candidate.bpm - current.bpm);
   const keyDist = camelotDistance(current.key, current.mode, candidate.key, candidate.mode);
-
   if (isSafe && bpmDiff > 5) return null;
   if (isSafe && keyDist > 1) return null;
-
   let score = 100;
-  score -= isSafe ? bpmDiff * 8 : Math.min(bpmDiff * 2, 40);
-  score -= isSafe ? keyDist * 20 : keyDist * 5;
-  if (!isSafe && keyDist >= 3) score += 15;
-  if (!isSafe && keyDist >= 5) score += 10;
-  if (candidate.mode === current.mode) score += 5;
-  else if (isSafe) score -= 10;
-
-  const eD = candidate.energy - current.energy;
-  const iD = candidate.intensity - current.intensity;
-  const dD = candidate.dance - current.dance;
-
-  if (intention === "stable") {
-    score -= Math.abs(eD)*60; score -= Math.abs(iD)*45; score -= Math.abs(dD)*25;
-    if (bpmDiff<=2) score+=20; if (keyDist===0) score+=15; if (Math.abs(eD)<0.05) score+=15;
-  } else if (intention === "up") {
-    if (eD>0) score+=eD*70; else score+=eD*55;
-    if (iD>0) score+=iD*50; else score+=iD*40;
-    if (dD>0) score+=dD*20;
-    if (candidate.bpm>current.bpm&&bpmDiff<=10) score+=12;
-    if (candidate.bpm<current.bpm) score-=bpmDiff*2;
-    if (candidate.energy<current.energy-0.10) return null;
-    if (candidate.intensity<current.intensity-0.10) return null;
-  } else if (intention === "down") {
-    if (eD<0) score+=Math.abs(eD)*70; else score-=eD*55;
-    if (iD<0) score+=Math.abs(iD)*50; else score-=iD*40;
-    if (dD<0) score+=Math.abs(dD)*15;
-    if (candidate.bpm<current.bpm&&bpmDiff<=10) score+=12;
-    if (candidate.bpm>current.bpm) score-=bpmDiff*2;
-    if (candidate.energy>current.energy+0.10) return null;
-    if (candidate.intensity>current.intensity+0.10) return null;
+  score -= isSafe ? bpmDiff*8 : Math.min(bpmDiff*2,40);
+  score -= isSafe ? keyDist*20 : keyDist*5;
+  if (!isSafe && keyDist>=3) score+=15;
+  if (!isSafe && keyDist>=5) score+=10;
+  if (candidate.mode===current.mode) score+=5; else if(isSafe) score-=10;
+  const eD=candidate.energy-current.energy, iD=candidate.intensity-current.intensity, dD=candidate.dance-current.dance;
+  if (intention==="stable") {
+    score-=Math.abs(eD)*60; score-=Math.abs(iD)*45; score-=Math.abs(dD)*25;
+    if(bpmDiff<=2)score+=20; if(keyDist===0)score+=15; if(Math.abs(eD)<0.05)score+=15;
+  } else if (intention==="up") {
+    score+=eD>0?eD*70:eD*55; score+=iD>0?iD*50:iD*40; score+=dD>0?dD*20:0;
+    if(candidate.bpm>current.bpm&&bpmDiff<=10)score+=12; if(candidate.bpm<current.bpm)score-=bpmDiff*2;
+    if(candidate.energy<current.energy-0.10)return null; if(candidate.intensity<current.intensity-0.10)return null;
+  } else if (intention==="down") {
+    score+=eD<0?Math.abs(eD)*70:-eD*55; score+=iD<0?Math.abs(iD)*50:-iD*40; score+=dD<0?Math.abs(dD)*15:0;
+    if(candidate.bpm<current.bpm&&bpmDiff<=10)score+=12; if(candidate.bpm>current.bpm)score-=bpmDiff*2;
+    if(candidate.energy>current.energy+0.10)return null; if(candidate.intensity>current.intensity+0.10)return null;
   }
-
-  const totalD = (eD+iD)/2;
+  const totalD=(eD+iD)/2;
   let label;
-  if (keyDist===0&&bpmDiff<=2) label="transition parfaite";
-  else if (intention==="stable"&&Math.abs(totalD)<0.05&&keyDist<=1) label="continuité stable";
-  else if (intention==="up"&&totalD>0.15) label="monte bien";
-  else if (intention==="up"&&totalD>0.05) label="monte légèrement";
-  else if (intention==="down"&&totalD<-0.15) label="redescente propre";
-  else if (intention==="down"&&totalD<-0.05) label="redescend légèrement";
-  else if (keyDist>=3) label="bifurcation assumée";
-  else if (keyDist<=1) label="très compatible";
+  if(keyDist===0&&bpmDiff<=2)label="transition parfaite";
+  else if(intention==="stable"&&Math.abs(totalD)<0.05&&keyDist<=1)label="continuité stable";
+  else if(intention==="up"&&totalD>0.15)label="monte bien";
+  else if(intention==="up"&&totalD>0.05)label="monte légèrement";
+  else if(intention==="down"&&totalD<-0.15)label="redescente propre";
+  else if(intention==="down"&&totalD<-0.05)label="redescend légèrement";
+  else if(keyDist>=3)label="bifurcation assumée";
+  else if(keyDist<=1)label="très compatible";
   else label="compatible";
-
-  return { ...candidate, score:Math.max(0,score), label, bpmDiff, keyDist, eD, iD };
+  return {...candidate,score:Math.max(0,score),label,bpmDiff,keyDist,eD,iD};
 }
 
 function getLabelStyle(label) {
-  if (label==="transition parfaite") return ["#1a3825","#4caf74"];
-  if (label==="très compatible") return ["#1a2e10","#7bc34a"];
-  if (label==="continuité stable") return ["#1a1a10","#a0a060"];
-  if (label==="monte bien") return ["#2a1800","#e08830"];
-  if (label==="monte légèrement") return ["#201800","#c9a84c"];
-  if (label==="redescente propre") return ["#0d1a22","#4a9cc0"];
-  if (label==="redescend légèrement") return ["#0a1520","#3a7a9a"];
-  if (label==="bifurcation assumée") return ["#2a1510","#e0673a"];
-  return ["#1a1a1a","#666"];
+  if(label==="transition parfaite")return["#1a3825","#4caf74"];
+  if(label==="très compatible")return["#1a2e10","#7bc34a"];
+  if(label==="continuité stable")return["#1a1a10","#a0a060"];
+  if(label==="monte bien")return["#2a1800","#e08830"];
+  if(label==="monte légèrement")return["#201800","#c9a84c"];
+  if(label==="redescente propre")return["#0d1a22","#4a9cc0"];
+  if(label==="redescend légèrement")return["#0a1520","#3a7a9a"];
+  if(label==="bifurcation assumée")return["#2a1510","#e0673a"];
+  return["#1a1a1a","#666"];
 }
 
-// ─── PKCE AUTH ────────────────────────────────────────────────────────────────
-async function generateCodeVerifier() { const a=new Uint32Array(56); crypto.getRandomValues(a); return Array.from(a,d=>d.toString(36)).join("").slice(0,128); }
-async function generateCodeChallenge(v) { const d=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(v)); return btoa(String.fromCharCode(...new Uint8Array(d))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=/g,""); }
-async function redirectToSpotify() { const v=await generateCodeVerifier(),c=await generateCodeChallenge(v); localStorage.setItem("pkce_verifier",v); window.location=`https://accounts.spotify.com/authorize?${new URLSearchParams({client_id:CLIENT_ID,response_type:"code",redirect_uri:REDIRECT_URI,scope:SCOPES,code_challenge_method:"S256",code_challenge:c})}`; }
-async function exchangeToken(code) { const v=localStorage.getItem("pkce_verifier"); const r=await fetch("https://accounts.spotify.com/api/token",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:new URLSearchParams({client_id:CLIENT_ID,grant_type:"authorization_code",code,redirect_uri:REDIRECT_URI,code_verifier:v})}); const d=await r.json(); if(d.access_token){localStorage.setItem("spotify_token",d.access_token);localStorage.setItem("spotify_refresh",d.refresh_token);localStorage.setItem("spotify_expires",Date.now()+d.expires_in*1000);} return d.access_token; }
-async function refreshAccessToken() { const rf=localStorage.getItem("spotify_refresh"); if(!rf) return null; const r=await fetch("https://accounts.spotify.com/api/token",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:new URLSearchParams({client_id:CLIENT_ID,grant_type:"refresh_token",refresh_token:rf})}); const d=await r.json(); if(d.access_token){localStorage.setItem("spotify_token",d.access_token);localStorage.setItem("spotify_expires",Date.now()+d.expires_in*1000);return d.access_token;} return null; }
-async function getToken() { const e=parseInt(localStorage.getItem("spotify_expires")||"0"); if(Date.now()>e-60000) return await refreshAccessToken(); return localStorage.getItem("spotify_token"); }
+async function generateCodeVerifier(){const a=new Uint32Array(56);crypto.getRandomValues(a);return Array.from(a,d=>d.toString(36)).join("").slice(0,128);}
+async function generateCodeChallenge(v){const d=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(v));return btoa(String.fromCharCode(...new Uint8Array(d))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=/g,"");}
+async function redirectToSpotify(){const v=await generateCodeVerifier(),c=await generateCodeChallenge(v);localStorage.setItem("pkce_verifier",v);window.location=`https://accounts.spotify.com/authorize?${new URLSearchParams({client_id:CLIENT_ID,response_type:"code",redirect_uri:REDIRECT_URI,scope:SCOPES,code_challenge_method:"S256",code_challenge:c})}`;}
+async function exchangeToken(code){const v=localStorage.getItem("pkce_verifier");const r=await fetch("https://accounts.spotify.com/api/token",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:new URLSearchParams({client_id:CLIENT_ID,grant_type:"authorization_code",code,redirect_uri:REDIRECT_URI,code_verifier:v})});const d=await r.json();if(d.access_token){localStorage.setItem("spotify_token",d.access_token);localStorage.setItem("spotify_refresh",d.refresh_token);localStorage.setItem("spotify_expires",Date.now()+d.expires_in*1000);}return d.access_token;}
+async function refreshAccessToken(){const rf=localStorage.getItem("spotify_refresh");if(!rf)return null;const r=await fetch("https://accounts.spotify.com/api/token",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:new URLSearchParams({client_id:CLIENT_ID,grant_type:"refresh_token",refresh_token:rf})});const d=await r.json();if(d.access_token){localStorage.setItem("spotify_token",d.access_token);localStorage.setItem("spotify_expires",Date.now()+d.expires_in*1000);return d.access_token;}return null;}
+async function getToken(){const e=parseInt(localStorage.getItem("spotify_expires")||"0");if(Date.now()>e-60000)return await refreshAccessToken();return localStorage.getItem("spotify_token");}
 
-function EnergyDot({value}) { const f=Math.round((value||0)*5); return <span style={{letterSpacing:2}}>{Array.from({length:5},(_,i)=><span key={i} style={{color:i<f?"#c9a84c":"#2a2a2a",fontSize:8}}>●</span>)}</span>; }
+function EnergyDot({value}){const f=Math.round((value||0)*5);return <span style={{letterSpacing:2}}>{Array.from({length:5},(_,i)=><span key={i} style={{color:i<f?"#c9a84c":"#2a2a2a",fontSize:8}}>●</span>)}</span>;}
 
-// ─── MAIN APP ─────────────────────────────────────────────────────────────────
 export default function Temper() {
-  const [token, setToken] = useState(null);
-  const [spotifyTrack, setSpotifyTrack] = useState(null);
-  const [currentTrack, setCurrentTrack] = useState(null);
-  const [fetchingMeta, setFetchingMeta] = useState(false);
-  const [intention, setIntention] = useState("stable");
-  const [tolerance, setTolerance] = useState("safe");
-  const [suggestions, setSuggestions] = useState([]);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState([]);
-  const [searching, setSearching] = useState(false);
-  const [animKey, setAnimKey] = useState(0);
-  const [addedId, setAddedId] = useState(null);
-  const searchTimeout = useRef(null);
-  const lastSpotifyId = useRef(null);
+  const [token,setToken]=useState(null);
+  const [spotifyTrack,setSpotifyTrack]=useState(null);
+  const [currentTrack,setCurrentTrack]=useState(null);
+  const [fetchingMeta,setFetchingMeta]=useState(false);
+  const [intention,setIntention]=useState("stable");
+  const [tolerance,setTolerance]=useState("safe");
+  const [suggestions,setSuggestions]=useState([]);
+  const [searchQuery,setSearchQuery]=useState("");
+  const [searchResults,setSearchResults]=useState([]);
+  const [searching,setSearching]=useState(false);
+  const [animKey,setAnimKey]=useState(0);
+  const [addedId,setAddedId]=useState(null);
+  const searchTimeout=useRef(null);
+  const lastSpotifyId=useRef(null);
 
-  // ── Auth
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const code = params.get("code");
-    if (code) { exchangeToken(code).then(t => { setToken(t); window.history.replaceState({},""," /"); }); }
-    else { const t = localStorage.getItem("spotify_token"); if(t) setToken(t); }
-  }, []);
+  useEffect(()=>{
+    const params=new URLSearchParams(window.location.search);
+    const code=params.get("code");
+    if(code){exchangeToken(code).then(t=>{setToken(t);window.history.replaceState({},"","/");});}
+    else{const t=localStorage.getItem("spotify_token");if(t)setToken(t);}
+  },[]);
 
-  // ── Poll Spotify + fetch metadata via GetSongBPM
-  useEffect(() => {
-    if (!token) return;
-    const poll = async () => {
-      const t = await getToken(); if(!t) return;
-      try {
-        const r = await fetch("https://api.spotify.com/v1/me/player/currently-playing", { headers:{Authorization:`Bearer ${t}`} });
-        if (r.status === 200) {
-          const d = await r.json();
-          if (d?.item && d.item.id !== lastSpotifyId.current) {
-            lastSpotifyId.current = d.item.id;
+  useEffect(()=>{
+    if(!token)return;
+    const poll=async()=>{
+      const t=await getToken();if(!t)return;
+      try{
+        const r=await fetch("https://api.spotify.com/v1/me/player/currently-playing",{headers:{Authorization:`Bearer ${t}`}});
+        if(r.status===200){
+          const d=await r.json();
+          if(d?.item&&d.item.id!==lastSpotifyId.current){
+            lastSpotifyId.current=d.item.id;
             setSpotifyTrack(d.item);
-            // Fetch BPM + key from GetSongBPM
             setFetchingMeta(true);
-            const meta = await fetchSongData(d.item.name, d.item.artists?.[0]?.name || "");
-            setFetchingMeta(false);
-            if (meta) {
-              setCurrentTrack({
-                id: `spotify_${d.item.id}`,
-                title: d.item.name,
-                artist: d.item.artists?.map(a=>a.name).join(", "),
-                bpm: meta.bpm,
-                key: meta.key,
-                mode: meta.mode,
-                energy: 0.70, // valeur par défaut
-                dance: 0.75,
-                intensity: 0.65,
-                genre: meta.genre,
-                fromSpotify: true,
-              });
+            const results=await bpmSearch(`${d.item.name} ${d.item.artists?.[0]?.name||""}`);
+            if(results.length>0){
+              const song=await bpmSong(results[0].id);
+              const meta=parseSongMeta(song);
+              if(meta){
+                setCurrentTrack({
+                  id:`spotify_${d.item.id}`,
+                  title:d.item.name,
+                  artist:d.item.artists?.map(a=>a.name).join(", "),
+                  bpm:meta.bpm,key:meta.key,mode:meta.mode,
+                  energy:0.70,dance:0.75,intensity:0.65,
+                  genre:meta.genre,fromSpotify:true,
+                });
+              }
             }
+            setFetchingMeta(false);
           }
         }
-      } catch(e) {}
+      }catch(e){}
     };
     poll();
-    const iv = setInterval(poll, 5000);
-    return () => clearInterval(iv);
-  }, [token]);
+    const iv=setInterval(poll,5000);
+    return()=>clearInterval(iv);
+  },[token]);
 
-  // ── Recherche GetSongBPM
-  useEffect(() => {
+  useEffect(()=>{
     clearTimeout(searchTimeout.current);
-    if (!searchQuery || searchQuery.length < 2) { setSearchResults([]); return; }
-    searchTimeout.current = setTimeout(async () => {
+    if(!searchQuery||searchQuery.length<2){setSearchResults([]);return;}
+    searchTimeout.current=setTimeout(async()=>{
       setSearching(true);
-      const results = await searchSongBPM(searchQuery);
-      setSearchResults(results.slice(0, 8));
+      const results=await bpmSearch(searchQuery);
+      setSearchResults(results.slice(0,8));
       setSearching(false);
-    }, 400);
-  }, [searchQuery]);
+    },400);
+  },[searchQuery]);
 
-  // ── Calcul suggestions depuis la base locale
-  useEffect(() => {
-    if (!currentTrack) return;
-    const scored = TRACKS
-      .filter(t => t.id !== currentTrack.id)
-      .map(t => scoreTrack(currentTrack, t, intention, tolerance))
-      .filter(Boolean)
-      .sort((a,b) => b.score - a.score)
-      .slice(0, 8);
+  useEffect(()=>{
+    if(!currentTrack)return;
+    const scored=TRACKS.filter(t=>t.id!==currentTrack.id).map(t=>scoreTrack(currentTrack,t,intention,tolerance)).filter(Boolean).sort((a,b)=>b.score-a.score).slice(0,8);
     setSuggestions(scored);
-    setAnimKey(k => k+1);
-  }, [currentTrack, intention, tolerance]);
+    setAnimKey(k=>k+1);
+  },[currentTrack,intention,tolerance]);
 
-  const selectFromSearch = async (result) => {
-    setSearchQuery("");
-    setSearchResults([]);
-    setFetchingMeta(true);
-    // Fetch détails complets
-    try {
-      const detailRes = await fetch(`https://api.getsongbpm.com/song/?api_key=${GETSONGBPM_KEY}&id=${result.id}`);
-      const detail = await detailRes.json();
-      const song = detail?.song;
-      if (song) {
-        const bpm = parseFloat(song.tempo);
-        const keyStr = song.key_of || "";
-        const isMinor = keyStr.toLowerCase().includes("minor") || keyStr.includes("m");
-        const keyLetter = keyStr.replace(/\s*(major|minor|maj|min|m)\s*/i,"").trim();
-        const key = KEY_MAP[keyLetter] ?? -1;
-        if (bpm && key !== -1) {
-          setCurrentTrack({
-            id: `bpm_${result.id}`,
-            title: result.song_title || result.title,
-            artist: result.artist?.artist_name || "",
-            bpm,
-            key,
-            mode: isMinor ? 0 : 1,
-            energy: 0.70,
-            dance: 0.75,
-            intensity: 0.65,
-            genre: result.genre || "unknown",
-          });
-        }
-      }
-    } catch(e) {}
+  const selectFromSearch=async(result)=>{
+    setSearchQuery("");setSearchResults([]);setFetchingMeta(true);
+    const song=await bpmSong(result.id);
+    const meta=parseSongMeta(song);
+    if(meta){
+      setCurrentTrack({
+        id:`bpm_${result.id}`,
+        title:result.song_title||result.title||"",
+        artist:result.artist?.artist_name||"",
+        bpm:meta.bpm,key:meta.key,mode:meta.mode,
+        energy:0.70,dance:0.75,intensity:0.65,
+        genre:meta.genre,
+      });
+    }
     setFetchingMeta(false);
   };
 
-  const addToQueue = async (track) => {
-    const t = await getToken(); if(!t) return;
-    try {
-      const r = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(track.title+" "+track.artist)}&type=track&limit=1`, { headers:{Authorization:`Bearer ${t}`} });
-      const d = await r.json();
-      const uri = d?.tracks?.items?.[0]?.uri;
-      if (uri) {
-        await fetch(`https://api.spotify.com/v1/me/player/queue?uri=${encodeURIComponent(uri)}`, { method:"POST", headers:{Authorization:`Bearer ${t}`} });
-        setAddedId(track.id); setTimeout(()=>setAddedId(null),2000);
-      }
-    } catch(e) {}
+  const addToQueue=async(track)=>{
+    const t=await getToken();if(!t)return;
+    try{
+      const r=await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(track.title+" "+track.artist)}&type=track&limit=1`,{headers:{Authorization:`Bearer ${t}`}});
+      const d=await r.json();
+      const uri=d?.tracks?.items?.[0]?.uri;
+      if(uri){await fetch(`https://api.spotify.com/v1/me/player/queue?uri=${encodeURIComponent(uri)}`,{method:"POST",headers:{Authorization:`Bearer ${t}`}});setAddedId(track.id);setTimeout(()=>setAddedId(null),2000);}
+    }catch(e){}
   };
 
-  return (
+  return(
     <div style={{minHeight:"100vh",background:"#0a0a0a",color:"#e8e4dc",fontFamily:"'DM Mono','Courier New',monospace",display:"flex",flexDirection:"column",alignItems:"center",padding:"0 0 60px"}}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Playfair+Display:ital,wght@0,400;1,400&display=swap');
@@ -445,23 +353,18 @@ export default function Temper() {
         .lb-btn:hover{background:#161200;border-color:var(--gold);}
         .sri{padding:9px 14px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;font-size:12px;transition:background .15s;}
         .sri:hover{background:#161616;}.sri:last-child{border-bottom:none;}
-        @keyframes spin{to{transform:rotate(360deg)}}
-        .spin{display:inline-block;animation:spin 1s linear infinite;}
-        @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
-        .pulse{animation:pulse 1.5s ease infinite;}
+        @keyframes spin{to{transform:rotate(360deg)}}.spin{display:inline-block;animation:spin 1s linear infinite;}
+        @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}.pulse{animation:pulse 1.5s ease infinite;}
       `}</style>
 
       <div style={{width:"100%",maxWidth:460,padding:"28px 20px 0"}}>
-
-        {/* Header */}
         <div style={{display:"flex",alignItems:"baseline",gap:10,marginBottom:2}}>
           <span style={{fontFamily:"'Playfair Display',serif",fontStyle:"italic",fontSize:26,color:"var(--gold)"}}>Temper</span>
           <span style={{fontSize:10,color:"var(--dim)",letterSpacing:"0.15em",textTransform:"uppercase"}}>DJ Navigator</span>
         </div>
         <div style={{height:1,background:"linear-gradient(to right,var(--gold-dim),transparent)",marginBottom:24}}/>
 
-        {/* LOGIN */}
-        {!token && (
+        {!token&&(
           <div style={{textAlign:"center",padding:"60px 20px"}}>
             <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,color:"#e8e4dc",marginBottom:8}}>Connecte-toi à Spotify</div>
             <div style={{fontSize:11,color:"var(--dim)",marginBottom:28,lineHeight:1.6}}>Temper détecte le morceau en cours<br/>et navigue dans le catalogue pour toi.</div>
@@ -469,61 +372,54 @@ export default function Temper() {
           </div>
         )}
 
-        {token && (<>
-
-          {/* Spotify en cours */}
+        {token&&(<>
           <div style={{marginBottom:16}}>
             <div style={{fontSize:9,letterSpacing:"0.18em",color:"var(--dim)",textTransform:"uppercase",marginBottom:8}}>Spotify</div>
-            {spotifyTrack ? (
+            {spotifyTrack?(
               <div style={{background:"#0d1a0d",border:"1px solid #1a3020",borderRadius:4,padding:"12px 14px",display:"flex",gap:10,alignItems:"center"}}>
-                {spotifyTrack.album?.images?.[2]?.url && <img src={spotifyTrack.album.images[2].url} alt="" style={{width:40,height:40,borderRadius:2,flexShrink:0}}/>}
+                {spotifyTrack.album?.images?.[2]?.url&&<img src={spotifyTrack.album.images[2].url} alt="" style={{width:40,height:40,borderRadius:2,flexShrink:0}}/>}
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:10,color:"#4caf74",letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:3}}>
                     <span className="pulse">●</span> En lecture
-                    {fetchingMeta && <span style={{color:"var(--gold)",marginLeft:8}}><span className="spin">◌</span> analyse BPM…</span>}
+                    {fetchingMeta&&<span style={{color:"var(--gold)",marginLeft:8}}><span className="spin">◌</span> analyse BPM…</span>}
                   </div>
                   <div style={{fontSize:13,color:"#e8e4dc",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{spotifyTrack.name}</div>
                   <div style={{fontSize:10,color:"var(--dim)"}}>{spotifyTrack.artists?.map(a=>a.name).join(", ")}</div>
                 </div>
               </div>
-            ) : (
+            ):(
               <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:4,padding:"14px 16px",color:"var(--dim)",fontSize:11}}>
                 Lance un morceau sur Spotify — Temper le détecte automatiquement.
               </div>
             )}
           </div>
 
-          {/* Recherche GetSongBPM */}
           <div style={{marginBottom:16}}>
-            <div style={{fontSize:9,letterSpacing:"0.18em",color:"var(--dim)",textTransform:"uppercase",marginBottom:8}}>
-              Ou chercher un morceau de départ
-            </div>
-            <input
-              className="si-inp"
-              placeholder="Titre, artiste… (catalogue GetSongBPM)"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-            />
-            {searching && <div style={{fontSize:10,color:"var(--dim)",marginTop:6,padding:"0 2px"}}><span className="spin">◌</span> Recherche…</div>}
-            {searchResults.length > 0 && (
+            <div style={{fontSize:9,letterSpacing:"0.18em",color:"var(--dim)",textTransform:"uppercase",marginBottom:8}}>Ou chercher un morceau de départ</div>
+            <input className="si-inp" placeholder="Titre, artiste… (catalogue GetSongBPM)" value={searchQuery} onChange={e=>setSearchQuery(e.target.value)}/>
+            {searching&&<div style={{fontSize:10,color:"var(--dim)",marginTop:6}}><span className="spin">◌</span> Recherche…</div>}
+            {searchResults.length>0&&(
               <div style={{marginTop:6,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:4,overflow:"hidden"}}>
-                {searchResults.map((r,i) => (
-                  <div key={i} className="sri" onClick={() => selectFromSearch(r)}>
+                {searchResults.map((r,i)=>(
+                  <div key={i} className="sri" onClick={()=>selectFromSearch(r)}>
                     <div>
-                      <div style={{color:"#e8e4dc"}}>{r.song_title || r.title}</div>
-                      <div style={{color:"var(--dim)",fontSize:10}}>{r.artist?.artist_name || ""}</div>
+                      <div style={{color:"#e8e4dc"}}>{r.song_title||r.title}</div>
+                      <div style={{color:"var(--dim)",fontSize:10}}>{r.artist?.artist_name||""}</div>
                     </div>
-                    <div style={{fontSize:10,color:"var(--dim)",textAlign:"right"}}>
-                      {r.tempo && <div>{Math.round(r.tempo)} bpm</div>}
-                    </div>
+                    <div style={{fontSize:10,color:"var(--dim)"}}>{r.tempo&&`${Math.round(r.tempo)} bpm`}</div>
                   </div>
                 ))}
               </div>
             )}
           </div>
 
-          {/* Morceau courant */}
-          {currentTrack && (
+          {fetchingMeta&&!currentTrack&&(
+            <div style={{textAlign:"center",padding:"20px 0",color:"var(--dim)",fontSize:11}}>
+              <span className="spin">◌</span> Récupération des données musicales…
+            </div>
+          )}
+
+          {currentTrack&&(
             <div style={{marginBottom:18}}>
               <div style={{fontSize:9,letterSpacing:"0.18em",color:"var(--dim)",textTransform:"uppercase",marginBottom:8}}>Point de départ</div>
               <div style={{background:"var(--surface)",border:"1px solid var(--gold-dim)",borderRadius:4,padding:"14px 16px"}}>
@@ -540,23 +436,15 @@ export default function Temper() {
                 </div>
                 <div style={{display:"flex",gap:14,fontSize:10,flexWrap:"wrap"}}>
                   <span style={{color:"var(--dim)"}}>
-                    <span style={{color:"#e8e4dc",background:"#1a1a1a",padding:"1px 6px",borderRadius:2,border:"1px solid #2a2a2a",marginRight:6}}>
-                      {KEY_NAMES[currentTrack.key]} {currentTrack.mode===0?"min":"maj"}
-                    </span>
+                    <span style={{color:"#e8e4dc",background:"#1a1a1a",padding:"1px 6px",borderRadius:2,border:"1px solid #2a2a2a",marginRight:6}}>{KEY_NAMES[currentTrack.key]} {currentTrack.mode===0?"min":"maj"}</span>
                     <span style={{color:"var(--gold-dim)"}}>{getCamelot(currentTrack.key,currentTrack.mode)}</span>
                   </span>
                   <span style={{color:"var(--dim)"}}>Énergie <EnergyDot value={currentTrack.energy}/></span>
                 </div>
-                {currentTrack.fromSpotify && (
-                  <div style={{marginTop:8,fontSize:9,color:"var(--dim)"}}>
-                    ⚠ Énergie/danceability estimées — données BPM/tonalité via GetSongBPM
-                  </div>
-                )}
               </div>
             </div>
           )}
 
-          {/* Direction */}
           <div style={{marginBottom:10}}>
             <div style={{fontSize:9,letterSpacing:"0.18em",color:"var(--dim)",textTransform:"uppercase",marginBottom:8}}>Direction</div>
             <div style={{display:"flex",gap:6}}>
@@ -568,7 +456,6 @@ export default function Temper() {
             </div>
           </div>
 
-          {/* Tolérance */}
           <div style={{marginBottom:22}}>
             <div style={{display:"flex",gap:6}}>
               <button className={`bt safe ${tolerance==="safe"?"on":""}`} onClick={()=>setTolerance("safe")}>⬡ Safe</button>
@@ -578,18 +465,17 @@ export default function Temper() {
 
           <div style={{height:1,background:"linear-gradient(to right,transparent,var(--border),transparent)",marginBottom:18}}/>
 
-          {/* Suggestions */}
-          {!currentTrack ? (
+          {!currentTrack?(
             <div style={{textAlign:"center",padding:"30px 0",color:"var(--dim)",fontSize:11,lineHeight:1.8}}>
               Lance un morceau sur Spotify<br/>ou cherche un titre ci-dessus.
             </div>
-          ) : (
+          ):(
             <div>
               <div style={{fontSize:9,letterSpacing:"0.18em",color:"var(--dim)",textTransform:"uppercase",marginBottom:12}}>
                 Suggestions — {suggestions.length}
-                {suggestions.length===0 && <span style={{color:"#c0392b",marginLeft:8}}>— essaie le mode Audacieux</span>}
+                {suggestions.length===0&&<span style={{color:"#c0392b",marginLeft:8}}>— essaie le mode Audacieux</span>}
               </div>
-              {suggestions.length===0 && (
+              {suggestions.length===0&&(
                 <div style={{background:"#1a0d0a",border:"1px solid #3a1a10",borderRadius:4,padding:"14px 16px",fontSize:11,color:"#e0673a",lineHeight:1.6}}>
                   Aucun résultat en mode Safe. Passe en mode <strong>Audacieux</strong>.
                 </div>
@@ -601,7 +487,7 @@ export default function Temper() {
                   const bd=t.bpmDiff===0?"=":`${bs}${Math.round(t.bpmDiff)}`;
                   const ea=t.eD>0.02?"↑":t.eD<-0.02?"↓":"→";
                   const done=addedId===t.id;
-                  return (
+                  return(
                     <div key={t.id} className="tc si" style={{animationDelay:`${i*0.04}s`}}>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
                         <div style={{flex:1,minWidth:0}}>
