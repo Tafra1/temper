@@ -3,7 +3,7 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Methods", "GET");
 
   const { endpoint, ...params } = req.query;
-  const apiKey = process.env.VITE_GETSONGBPM_KEY;
+  const apiKey = process.env.GETSONGBPM_KEY;
 
   const queryString = new URLSearchParams({ api_key: apiKey, ...params }).toString();
   const url = `https://api.getsongbpm.com/${endpoint}/?${queryString}`;
