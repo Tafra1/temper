@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { getOrCreateUser, startSession, saveInteraction } from "./db.js";
 
 const CLIENT_ID = import.meta.env.VITE_SPOTIFY_CLIENT_ID;
 const REDIRECT_URI = "https://temper-lyart.vercel.app/callback";
@@ -239,12 +240,15 @@ export default function Temper() {
   const [addedId,setAddedId]=useState(null);
   const searchTimeout=useRef(null);
   const lastSpotifyId=useRef(null);
+  const [userId, setUserId]=useState(null);
+  const [sessionId, setSessionId]=useState(null);
+  const positionInSession=useRef(0);
 
   useEffect(()=>{
     const params=new URLSearchParams(window.location.search);
     const code=params.get("code");
-    if(code){exchangeToken(code).then(t=>{setToken(t);window.history.replaceState({},"","/");});}
-    else{const t=localStorage.getItem("spotify_token");if(t)setToken(t);}
+    if(code){exchangeToken(code).then(async t=>{setToken(t);window.history.replaceState({},"","/");const me=await fetch("https://api.spotify.com/v1/me",{headers:{Authorization:`Bearer ${t}`}});const meData=await me.json();const uid=await getOrCreateUser(meData.id,meData.display_name);const sid=await startSession(uid);setUserId(uid);setSessionId(sid);});}
+    else{const t=localStorage.getItem("spotify_token");if(t){setToken(t);const me=await fetch("https://api.spotify.com/v1/me",{headers:{Authorization:`Bearer ${t}`}}).catch(()=>null);if(me&&me.ok){const meData=await me.json();const uid=await getOrCreateUser(meData.id,meData.display_name);const sid=await startSession(uid);setUserId(uid);setSessionId(sid);}}}
   },[]);
 
   useEffect(()=>{
@@ -325,7 +329,7 @@ export default function Temper() {
       const r=await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(track.title+" "+track.artist)}&type=track&limit=1`,{headers:{Authorization:`Bearer ${t}`}});
       const d=await r.json();
       const uri=d?.tracks?.items?.[0]?.uri;
-      if(uri){await fetch(`https://api.spotify.com/v1/me/player/queue?uri=${encodeURIComponent(uri)}`,{method:"POST",headers:{Authorization:`Bearer ${t}`}});setAddedId(track.id);setTimeout(()=>setAddedId(null),2000);}
+      if(uri){await fetch(`https://api.spotify.com/v1/me/player/queue?uri=${encodeURIComponent(uri)}`,{method:"POST",headers:{Authorization:`Bearer ${t}`}});setAddedId(track.id);setTimeout(()=>setAddedId(null),2000);positionInSession.current+=1;if(userId&&sessionId)saveInteraction(userId,sessionId,track,"added",positionInSession.current);}
     }catch(e){}
   };
 
