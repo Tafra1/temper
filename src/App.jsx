@@ -318,7 +318,9 @@ export default function Temper() {
             setTransitionNotif(null);
             setSpotifyTrack(d.item);
             setFetchingMeta(true);
-            const results=await bpmSearch(d.item.name);
+            const spotifyArtist=d.item.artists?.map(a=>a.name).join(", ")||"";
+            const query=`${d.item.name} ${spotifyArtist}`.trim();
+            const results=await bpmSearch(query);
             let trackSet=false;
             if(results.length>0){
               const song=await bpmSong(results[0].id);
@@ -327,7 +329,7 @@ export default function Temper() {
                 setCurrentTrack({
                   id:`spotify_${d.item.id}`,
                   title:d.item.name,
-                  artist:d.item.artists?.map(a=>a.name).join(", "),
+                  artist:spotifyArtist,
                   bpm:meta.bpm,key:meta.key,mode:meta.mode,
                   energy:0.70,dance:0.75,intensity:0.65,
                   genre:meta.genre,fromSpotify:true,
@@ -343,10 +345,21 @@ export default function Temper() {
                   ...local,
                   id:`spotify_${d.item.id}`,
                   title:d.item.name,
-                  artist:d.item.artists?.map(a=>a.name).join(", ")||local.artist,
+                  artist:spotifyArtist||local.artist,
                   fromSpotify:true,fromLocal:true,
                 });
+                trackSet=true;
               }
+            }
+            if(!trackSet){
+              setCurrentTrack({
+                id:`spotify_${d.item.id}`,
+                title:d.item.name,
+                artist:spotifyArtist,
+                bpm:null,key:null,mode:null,
+                energy:null,dance:null,intensity:null,
+                genre:null,fromSpotify:true,noData:true,
+              });
             }
             setFetchingMeta(false);
           }
@@ -390,7 +403,7 @@ export default function Temper() {
   },[searchQuery]);
 
   useEffect(()=>{
-    if(!currentTrack)return;
+    if(!currentTrack||currentTrack.noData){setSuggestions([]);return;}
     const scored=TRACKS.filter(t=>t.id!==currentTrack.id).map(t=>scoreTrack(currentTrack,t,intention,tolerance)).filter(Boolean).sort((a,b)=>b.score-a.score).slice(0,8);
     setSuggestions(scored);
     setAnimKey(k=>k+1);
@@ -539,17 +552,22 @@ export default function Temper() {
                     <div style={{fontSize:10,color:"var(--gold-dim)",marginTop:2}}>{currentTrack.genre}</div>
                   </div>
                   <div style={{textAlign:"right"}}>
-                    <div style={{fontSize:20,color:"var(--gold)",fontWeight:500}}>{Math.round(currentTrack.bpm)}</div>
-                    <div style={{fontSize:9,color:"var(--dim)"}}>BPM</div>
+                    {currentTrack.bpm!=null
+                      ?<><div style={{fontSize:20,color:"var(--gold)",fontWeight:500}}>{Math.round(currentTrack.bpm)}</div><div style={{fontSize:9,color:"var(--dim)"}}>BPM</div></>
+                      :<div style={{fontSize:10,color:"var(--dim)"}}>BPM inconnu</div>
+                    }
                   </div>
                 </div>
-                <div style={{display:"flex",gap:14,fontSize:10,flexWrap:"wrap"}}>
-                  <span style={{color:"var(--dim)"}}>
-                    <span style={{color:"#e8e4dc",background:"#1a1a1a",padding:"1px 6px",borderRadius:2,border:"1px solid #2a2a2a",marginRight:6}}>{KEY_NAMES[currentTrack.key]} {currentTrack.mode===0?"min":"maj"}</span>
-                    <span style={{color:"var(--gold-dim)"}}>{getCamelot(currentTrack.key,currentTrack.mode)}</span>
-                  </span>
-                  <span style={{color:"var(--dim)"}}>Énergie <EnergyDot value={currentTrack.energy}/></span>
-                </div>
+                {currentTrack.noData
+                  ?<div style={{fontSize:10,color:"var(--dim)",fontStyle:"italic"}}>Données musicales indisponibles pour ce morceau.</div>
+                  :<div style={{display:"flex",gap:14,fontSize:10,flexWrap:"wrap"}}>
+                    <span style={{color:"var(--dim)"}}>
+                      <span style={{color:"#e8e4dc",background:"#1a1a1a",padding:"1px 6px",borderRadius:2,border:"1px solid #2a2a2a",marginRight:6}}>{KEY_NAMES[currentTrack.key]} {currentTrack.mode===0?"min":"maj"}</span>
+                      <span style={{color:"var(--gold-dim)"}}>{getCamelot(currentTrack.key,currentTrack.mode)}</span>
+                    </span>
+                    <span style={{color:"var(--dim)"}}>Énergie <EnergyDot value={currentTrack.energy}/></span>
+                  </div>
+                }
               </div>
             </div>
           )}
@@ -577,6 +595,10 @@ export default function Temper() {
           {!currentTrack?(
             <div style={{textAlign:"center",padding:"30px 0",color:"var(--dim)",fontSize:11,lineHeight:1.8}}>
               Lance un morceau sur Spotify<br/>ou cherche un titre ci-dessus.
+            </div>
+          ):currentTrack.noData?(
+            <div style={{textAlign:"center",padding:"20px 0",color:"var(--dim)",fontSize:11,lineHeight:1.8}}>
+              BPM et tonalité introuvables pour ce morceau.<br/>Cherche un titre manuellement ci-dessus pour générer des suggestions.
             </div>
           ):(
             <div>
