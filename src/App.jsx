@@ -137,6 +137,35 @@ const KEY_MAP = {"C":0,"C#":1,"Db":1,"D":2,"D#":3,"Eb":3,"E":4,"F":5,"F#":6,"Gb"
 function getCamelot(key,mode){ return CAMELOT[key]?.[mode===0?"minor":"major"]||"?"; }
 function camelotDistance(k1,m1,k2,m2){ const c1=getCamelot(k1,m1),c2=getCamelot(k2,m2); if(c1==="?"||c2==="?") return 3; const n1=parseInt(c1),n2=parseInt(c2),t1=c1.slice(-1),t2=c2.slice(-1); if(t1!==t2) return Math.min(Math.abs(n1-n2),12-Math.abs(n1-n2))+1; return Math.min(Math.abs(n1-n2),12-Math.abs(n1-n2)); }
 
+const GENRE_FAMILY = {
+  "techno":"electronic","electronic":"electronic",
+  "house":"house","deep-house":"house","french-house":"house",
+  "nu-disco":"nu-disco",
+  "disco":"groove","funk":"groove","soul":"groove","electronic-soul":"groove","breaks":"groove",
+  "neo-soul":"soft-groove","rnb":"soft-groove",
+  "jazz":"jazz","jazz-funk":"jazz","jazz-fusion":"jazz",
+  "afro":"world","afrobeat":"world","latin":"world",
+  "ambient":"ambient",
+};
+const FAMILY_ADJACENT = {
+  "electronic":["house"],
+  "house":["electronic","nu-disco"],
+  "nu-disco":["house","groove"],
+  "groove":["nu-disco","soft-groove","jazz","world"],
+  "soft-groove":["groove","jazz"],
+  "jazz":["groove","soft-groove"],
+  "world":["groove"],
+  "ambient":[],
+};
+function genreDistance(g1,g2){
+  if(!g1||!g2) return 1;
+  if(g1===g2) return 0;
+  const f1=GENRE_FAMILY[g1]??g1, f2=GENRE_FAMILY[g2]??g2;
+  if(f1===f2) return 0;
+  if((FAMILY_ADJACENT[f1]||[]).includes(f2)) return 1;
+  return 2;
+}
+
 async function bpmSearch(query) {
   try {
     const res = await fetch(`/api/bpm?endpoint=search&lookup=${encodeURIComponent(query)}`);
@@ -168,11 +197,14 @@ function scoreTrack(current, candidate, intention, tolerance) {
   const isSafe = tolerance === "safe";
   const bpmDiff = Math.abs(candidate.bpm - current.bpm);
   const keyDist = camelotDistance(current.key, current.mode, candidate.key, candidate.mode);
+  const gDist = genreDistance(current.genre, candidate.genre);
   if (isSafe && bpmDiff > 5) return null;
   if (isSafe && keyDist > 1) return null;
+  if (isSafe && gDist >= 2) return null;
   let score = 100;
   score -= isSafe ? bpmDiff*8 : Math.min(bpmDiff*2,40);
   score -= isSafe ? keyDist*20 : keyDist*5;
+  score -= gDist*20;
   if (!isSafe && keyDist>=3) score+=15;
   if (!isSafe && keyDist>=5) score+=10;
   if (candidate.mode===current.mode) score+=5; else if(isSafe) score-=10;
