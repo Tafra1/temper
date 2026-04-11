@@ -140,7 +140,7 @@ function camelotDistance(k1,m1,k2,m2){ const c1=getCamelot(k1,m1),c2=getCamelot(
 // ── Proxy calls (contourne CORS)
 async function bpmSearch(query) {
   try {
-    const res = await fetch(`/api/bpm?endpoint=search&type=song&lookup=${encodeURIComponent(query)}`);
+    const res = await fetch(`/api/bpm?endpoint=search&lookup=${encodeURIComponent(query)}`);
     const data = await res.json();
     return data?.search || [];
   } catch(e) { return []; }
