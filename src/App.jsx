@@ -141,39 +141,26 @@ async function bpmSearch(query) {
   try {
     const res = await fetch(`/api/bpm?endpoint=search&lookup=${encodeURIComponent(query)}`);
     const data = await res.json();
-    console.log("📦 bpmSearch résultat brut:", data);
     return Array.isArray(data?.search) ? data.search : [];
-  } catch(e) {
-    console.error("❌ bpmSearch erreur:", e);
-    return [];
-  }
+  } catch(e) { return []; }
 }
 
 async function bpmSong(id) {
   try {
     const res = await fetch(`/api/bpm?endpoint=song&id=${id}`);
     const data = await res.json();
-    console.log("🎼 bpmSong résultat brut:", data);
     return data?.song || null;
-  } catch(e) {
-    console.error("❌ bpmSong erreur:", e);
-    return null;
-  }
+  } catch(e) { return null; }
 }
 
 function parseSongMeta(song) {
   if (!song) return null;
   const bpm = parseFloat(song.tempo);
   const keyStr = song.key_of || "";
-  console.log("🔑 parseSongMeta - keyStr:", keyStr, "bpm:", bpm);
   const isMinor = keyStr.toLowerCase().includes("m") && !keyStr.toLowerCase().includes("maj");
   const keyLetter = keyStr.replace(/m$/i,"").replace(/\s*(major|minor|maj|min)\s*/gi,"").trim();
-  console.log("🔑 keyLetter:", keyLetter, "isMinor:", isMinor);
   const key = KEY_MAP[keyLetter] ?? -1;
-  if (!bpm || key === -1) {
-    console.warn("⚠️ parseSongMeta échoue - bpm:", bpm, "key:", key);
-    return null;
-  }
+  if (!bpm || key === -1) return null;
   return { bpm, key, mode: isMinor ? 0 : 1, genre: song.genre || "unknown" };
 }
 
@@ -275,15 +262,10 @@ export default function Temper() {
             lastSpotifyId.current=d.item.id;
             setSpotifyTrack(d.item);
             setFetchingMeta(true);
-            console.log("🔍 Recherche BPM pour:", d.item.name);
             const results = await bpmSearch(d.item.name);
-            console.log("📋 Résultats search:", results?.length, results);
             if(results.length>0){
-              console.log("🎵 Premier résultat id:", results[0].id);
               const song=await bpmSong(results[0].id);
-              console.log("🎼 Song détail:", song);
               const meta=parseSongMeta(song);
-              console.log("✅ Meta parsée:", meta);
               if(meta){
                 setCurrentTrack({
                   id:`spotify_${d.item.id}`,
@@ -298,7 +280,7 @@ export default function Temper() {
             setFetchingMeta(false);
           }
         }
-      }catch(e){console.error("❌ Erreur poll:", e);}
+      }catch(e){}
     };
     poll();
     const iv=setInterval(poll,5000);
@@ -536,7 +518,7 @@ export default function Temper() {
           )}
 
           <div style={{marginTop:30,textAlign:"center",fontSize:9,color:"#2a2a2a",letterSpacing:"0.15em",textTransform:"uppercase"}}>
-            Temper · v5 · <a href="https://getsongbpm.com" style={{color:"#2a2a2a",textDecoration:"none"}}>BPM data by GetSongBPM</a>
+            Temper · v0.1 · <a href="https://getsongbpm.com" style={{color:"#2a2a2a",textDecoration:"none"}}>BPM data by GetSongBPM</a>
           </div>
         </>)}
       </div>
