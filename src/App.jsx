@@ -237,8 +237,10 @@ export default function Temper() {
   const [searching,setSearching]=useState(false);
   const [animKey,setAnimKey]=useState(0);
   const [addedId,setAddedId]=useState(null);
+  const [transitionNotif,setTransitionNotif]=useState(null);
   const searchTimeout=useRef(null);
   const lastSpotifyId=useRef(null);
+  const transitionShownFor=useRef(null);
   const [userId, setUserId]=useState(null);
   const [sessionId, setSessionId]=useState(null);
   const positionInSession=useRef(0);
@@ -258,11 +260,16 @@ export default function Temper() {
         const r=await fetch("https://api.spotify.com/v1/me/player/currently-playing",{headers:{Authorization:`Bearer ${t}`}});
         if(r.status===200){
           const d=await r.json();
-          if(d?.item&&d.item.id!==lastSpotifyId.current){
+          if(!d?.item)return;
+
+          // ── Nouveau morceau détecté
+          if(d.item.id!==lastSpotifyId.current){
             lastSpotifyId.current=d.item.id;
+            transitionShownFor.current=null;
+            setTransitionNotif(null);
             setSpotifyTrack(d.item);
             setFetchingMeta(true);
-            const results = await bpmSearch(d.item.name);
+            const results=await bpmSearch(d.item.name);
             if(results.length>0){
               const song=await bpmSong(results[0].id);
               const meta=parseSongMeta(song);
@@ -278,6 +285,26 @@ export default function Temper() {
               }
             }
             setFetchingMeta(false);
+          }
+
+          // ── Notification de transition (≤20s restantes)
+          const remaining=(d.item.duration_ms-d.progress_ms)/1000;
+          if(remaining<=20&&remaining>0&&transitionShownFor.current!==d.item.id){
+            transitionShownFor.current=d.item.id;
+            try{
+              const qr=await fetch("https://api.spotify.com/v1/me/player/queue",{headers:{Authorization:`Bearer ${t}`}});
+              if(qr.ok){
+                const qd=await qr.json();
+                const next=qd?.queue?.[0];
+                if(next){
+                  setTransitionNotif({
+                    title:next.name,
+                    artist:next.artists?.map(a=>a.name).join(", "),
+                    secondsLeft:Math.round(remaining),
+                  });
+                }
+              }
+            }catch(e){}
           }
         }
       }catch(e){}
@@ -358,7 +385,22 @@ export default function Temper() {
         .sri:hover{background:#161616;}.sri:last-child{border-bottom:none;}
         @keyframes spin{to{transform:rotate(360deg)}}.spin{display:inline-block;animation:spin 1s linear infinite;}
         @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}.pulse{animation:pulse 1.5s ease infinite;}
+        @keyframes slideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+        .tn{animation:slideUp .3s ease both;}
       `}</style>
+
+      {/* ── Notification de transition ── */}
+      {transitionNotif&&(
+        <div className="tn" style={{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",zIndex:100,background:"#0f1a0f",border:"1px solid #2e5a2e",borderRadius:6,padding:"12px 18px",maxWidth:400,width:"calc(100% - 40px)",display:"flex",alignItems:"center",gap:12,boxShadow:"0 4px 24px rgba(0,0,0,0.6)"}}>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:9,color:"#4caf74",letterSpacing:"0.15em",textTransform:"uppercase",marginBottom:4}}>
+              ⟶ Transition dans {transitionNotif.secondsLeft}s
+            </div>
+            <div style={{fontSize:13,color:"#e8e4dc",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{transitionNotif.title}</div>
+            <div style={{fontSize:10,color:"var(--dim)"}}>{transitionNotif.artist}</div>
+          </div>
+        </div>
+      )}
 
       <div style={{width:"100%",maxWidth:460,padding:"28px 20px 0"}}>
         <div style={{display:"flex",alignItems:"baseline",gap:10,marginBottom:2}}>
