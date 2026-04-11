@@ -270,6 +270,7 @@ export default function Temper() {
             setSpotifyTrack(d.item);
             setFetchingMeta(true);
             const results=await bpmSearch(d.item.name);
+            let trackSet=false;
             if(results.length>0){
               const song=await bpmSong(results[0].id);
               const meta=parseSongMeta(song);
@@ -281,6 +282,20 @@ export default function Temper() {
                   bpm:meta.bpm,key:meta.key,mode:meta.mode,
                   energy:0.70,dance:0.75,intensity:0.65,
                   genre:meta.genre,fromSpotify:true,
+                });
+                trackSet=true;
+              }
+            }
+            if(!trackSet){
+              const q=d.item.name.toLowerCase();
+              const local=TRACKS.find(t=>{const tl=t.title.toLowerCase();return tl===q||tl.includes(q)||q.includes(tl);});
+              if(local){
+                setCurrentTrack({
+                  ...local,
+                  id:`spotify_${d.item.id}`,
+                  title:d.item.name,
+                  artist:d.item.artists?.map(a=>a.name).join(", ")||local.artist,
+                  fromSpotify:true,fromLocal:true,
                 });
               }
             }
