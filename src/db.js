@@ -27,7 +27,7 @@ export async function startSession(userId) {
   const hour = now.getHours();
   let timeOfDay = "soiree";
   if (hour >= 17 && hour < 21) timeOfDay = "apero";
-  else if (hour >= 2 || hour < 6) timeOfDay = "late_night";
+  else if (hour >= 2 && hour < 6) timeOfDay = "late_night";
 
   const sessionRef = doc(db, "sessions", `${userId}_${Date.now()}`);
   await setDoc(sessionRef, {
