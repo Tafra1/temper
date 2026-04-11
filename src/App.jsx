@@ -248,7 +248,7 @@ export default function Temper() {
     const params=new URLSearchParams(window.location.search);
     const code=params.get("code");
     if(code){exchangeToken(code).then(async t=>{setToken(t);window.history.replaceState({},"","/");const me=await fetch("https://api.spotify.com/v1/me",{headers:{Authorization:`Bearer ${t}`}});const meData=await me.json();const uid=await getOrCreateUser(meData.id,meData.display_name);const sid=await startSession(uid);setUserId(uid);setSessionId(sid);});}
-    else{const t=localStorage.getItem("spotify_token");if(t){setToken(t);const me=await fetch("https://api.spotify.com/v1/me",{headers:{Authorization:`Bearer ${t}`}}).catch(()=>null);if(me&&me.ok){const meData=await me.json();const uid=await getOrCreateUser(meData.id,meData.display_name);const sid=await startSession(uid);setUserId(uid);setSessionId(sid);}}}
+    else{const t=localStorage.getItem("spotify_token");if(t){setToken(t);(async()=>{try{const me=await fetch("https://api.spotify.com/v1/me",{headers:{Authorization:`Bearer ${t}`}});if(me&&me.ok){const meData=await me.json();const uid=await getOrCreateUser(meData.id,meData.display_name);const sid=await startSession(uid);setUserId(uid);setSessionId(sid);}}catch(e){}})();}}
   },[]);
 
   useEffect(()=>{

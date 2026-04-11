@@ -12,3 +12,9 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
+
+// ── Vérification temporaire — à supprimer après test ──
+console.log("Firebase config:", {
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY ? "✓" : "✗",
+});

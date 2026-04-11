@@ -1,18 +1,21 @@
 import { db } from "./firebase.js";
 import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 
-// ── Créer ou récupérer un utilisateur
 export async function getOrCreateUser(spotifyId, displayName) {
+  console.log("getOrCreateUser appelé", spotifyId);
   const ref = doc(db, "users", spotifyId);
   const snap = await getDoc(ref);
   if (!snap.exists()) {
+    console.log("Création utilisateur...");
     await setDoc(ref, {
       spotify_id: spotifyId,
       display_name: displayName,
       created_at: serverTimestamp(),
       last_seen_at: serverTimestamp(),
     });
+    console.log("Utilisateur créé ✓");
   } else {
+    console.log("Utilisateur existant, mise à jour last_seen...");
     await updateDoc(ref, { last_seen_at: serverTimestamp() });
   }
   return spotifyId;
