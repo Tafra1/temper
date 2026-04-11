@@ -144,23 +144,40 @@ const GENRE_FAMILY = {
   "disco":"groove","funk":"groove","soul":"groove","electronic-soul":"groove","breaks":"groove",
   "neo-soul":"soft-groove","rnb":"soft-groove",
   "jazz":"jazz","jazz-funk":"jazz","jazz-fusion":"jazz",
-  "afro":"world","afrobeat":"world","latin":"world",
+  "afro":"world","afrobeat":"world","latin":"world","afro-cuban":"world","world":"world","salsa":"world","bossa nova":"world","samba":"world","reggae":"world",
   "ambient":"ambient",
 };
+// normalise les genres retournés par GetSongBPM (majuscules, nommages variés)
+const GENRE_NORMALIZE = {
+  "world":"world","latin":"latin","afro":"afro","afrobeat":"afrobeat","afro-cuban":"afro-cuban",
+  "reggae":"reggae","salsa":"salsa","bossa nova":"bossa nova","samba":"samba",
+  "jazz":"jazz","jazz funk":"jazz-funk","jazz-fusion":"jazz-fusion","fusion":"jazz-fusion",
+  "funk":"funk","soul":"soul","r&b":"rnb","rnb":"rnb","neo soul":"neo-soul","neo-soul":"neo-soul",
+  "disco":"disco","funk/soul":"funk",
+  "house":"house","deep house":"deep-house","french house":"french-house",
+  "nu disco":"nu-disco","nu-disco":"nu-disco",
+  "techno":"techno","electronic":"electronic","electronica":"electronic","electro":"electronic",
+  "ambient":"ambient","breaks":"breaks","breakbeat":"breaks",
+};
+function normalizeGenre(g){
+  if(!g) return null;
+  return GENRE_NORMALIZE[g.toLowerCase().trim()] ?? g.toLowerCase().trim();
+}
 const FAMILY_ADJACENT = {
   "electronic":["house"],
   "house":["electronic","nu-disco"],
   "nu-disco":["house","groove"],
   "groove":["nu-disco","soft-groove","jazz","world"],
   "soft-groove":["groove","jazz"],
-  "jazz":["groove","soft-groove"],
-  "world":["groove"],
+  "jazz":["groove","soft-groove","world"],
+  "world":["groove","jazz"],
   "ambient":[],
 };
 function genreDistance(g1,g2){
-  if(!g1||!g2) return 1;
-  if(g1===g2) return 0;
-  const f1=GENRE_FAMILY[g1]??g1, f2=GENRE_FAMILY[g2]??g2;
+  const n1=normalizeGenre(g1), n2=normalizeGenre(g2);
+  if(!n1||!n2) return 1;
+  if(n1===n2) return 0;
+  const f1=GENRE_FAMILY[n1]??n1, f2=GENRE_FAMILY[n2]??n2;
   if(f1===f2) return 0;
   if((FAMILY_ADJACENT[f1]||[]).includes(f2)) return 1;
   return 2;
@@ -200,11 +217,10 @@ function scoreTrack(current, candidate, intention, tolerance) {
   const gDist = genreDistance(current.genre, candidate.genre);
   if (isSafe && bpmDiff > 5) return null;
   if (isSafe && keyDist > 1) return null;
-  if (isSafe && gDist >= 2) return null;
   let score = 100;
   score -= isSafe ? bpmDiff*8 : Math.min(bpmDiff*2,40);
   score -= isSafe ? keyDist*20 : keyDist*5;
-  score -= gDist*20;
+  score -= isSafe ? gDist*45 : gDist*20;
   if (!isSafe && keyDist>=3) score+=15;
   if (!isSafe && keyDist>=5) score+=10;
   if (candidate.mode===current.mode) score+=5; else if(isSafe) score-=10;
@@ -223,8 +239,9 @@ function scoreTrack(current, candidate, intention, tolerance) {
   }
   const totalD=(eD+iD)/2;
   let label;
-  if(keyDist===0&&bpmDiff<=2)label="transition parfaite";
-  else if(intention==="stable"&&Math.abs(totalD)<0.05&&keyDist<=1)label="continuité stable";
+  if(gDist>=2)label="bifurcation assumée";
+  else if(keyDist===0&&bpmDiff<=2&&gDist===0)label="transition parfaite";
+  else if(intention==="stable"&&Math.abs(totalD)<0.05&&keyDist<=1&&gDist===0)label="continuité stable";
   else if(intention==="up"&&totalD>0.15)label="monte bien";
   else if(intention==="up"&&totalD>0.05)label="monte légèrement";
   else if(intention==="down"&&totalD<-0.15)label="redescente propre";
