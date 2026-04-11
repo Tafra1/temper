@@ -137,31 +137,43 @@ const KEY_MAP = {"C":0,"C#":1,"Db":1,"D":2,"D#":3,"Eb":3,"E":4,"F":5,"F#":6,"Gb"
 function getCamelot(key,mode){ return CAMELOT[key]?.[mode===0?"minor":"major"]||"?"; }
 function camelotDistance(k1,m1,k2,m2){ const c1=getCamelot(k1,m1),c2=getCamelot(k2,m2); if(c1==="?"||c2==="?") return 3; const n1=parseInt(c1),n2=parseInt(c2),t1=c1.slice(-1),t2=c2.slice(-1); if(t1!==t2) return Math.min(Math.abs(n1-n2),12-Math.abs(n1-n2))+1; return Math.min(Math.abs(n1-n2),12-Math.abs(n1-n2)); }
 
-// ── Proxy calls (contourne CORS)
 async function bpmSearch(query) {
   try {
     const res = await fetch(`/api/bpm?endpoint=search&lookup=${encodeURIComponent(query)}`);
     const data = await res.json();
-    return data?.search || [];
-  } catch(e) { return []; }
+    console.log("📦 bpmSearch résultat brut:", data);
+    return Array.isArray(data?.search) ? data.search : [];
+  } catch(e) {
+    console.error("❌ bpmSearch erreur:", e);
+    return [];
+  }
 }
 
 async function bpmSong(id) {
   try {
     const res = await fetch(`/api/bpm?endpoint=song&id=${id}`);
     const data = await res.json();
+    console.log("🎼 bpmSong résultat brut:", data);
     return data?.song || null;
-  } catch(e) { return null; }
+  } catch(e) {
+    console.error("❌ bpmSong erreur:", e);
+    return null;
+  }
 }
 
 function parseSongMeta(song) {
   if (!song) return null;
   const bpm = parseFloat(song.tempo);
   const keyStr = song.key_of || "";
-  const isMinor = keyStr.toLowerCase().includes("minor") || /\bm\b/i.test(keyStr);
-  const keyLetter = keyStr.replace(/\s*(major|minor|maj|min)\s*/gi,"").trim();
+  console.log("🔑 parseSongMeta - keyStr:", keyStr, "bpm:", bpm);
+  const isMinor = keyStr.toLowerCase().includes("m") && !keyStr.toLowerCase().includes("maj");
+  const keyLetter = keyStr.replace(/m$/i,"").replace(/\s*(major|minor|maj|min)\s*/gi,"").trim();
+  console.log("🔑 keyLetter:", keyLetter, "isMinor:", isMinor);
   const key = KEY_MAP[keyLetter] ?? -1;
-  if (!bpm || key === -1) return null;
+  if (!bpm || key === -1) {
+    console.warn("⚠️ parseSongMeta échoue - bpm:", bpm, "key:", key);
+    return null;
+  }
   return { bpm, key, mode: isMinor ? 0 : 1, genre: song.genre || "unknown" };
 }
 
@@ -263,10 +275,15 @@ export default function Temper() {
             lastSpotifyId.current=d.item.id;
             setSpotifyTrack(d.item);
             setFetchingMeta(true);
-            const results=await bpmSearch(`${d.item.name} ${d.item.artists?.[0]?.name||""}`);
+            console.log("🔍 Recherche BPM pour:", d.item.name);
+            const results = await bpmSearch(d.item.name);
+            console.log("📋 Résultats search:", results?.length, results);
             if(results.length>0){
+              console.log("🎵 Premier résultat id:", results[0].id);
               const song=await bpmSong(results[0].id);
+              console.log("🎼 Song détail:", song);
               const meta=parseSongMeta(song);
+              console.log("✅ Meta parsée:", meta);
               if(meta){
                 setCurrentTrack({
                   id:`spotify_${d.item.id}`,
@@ -281,7 +298,7 @@ export default function Temper() {
             setFetchingMeta(false);
           }
         }
-      }catch(e){}
+      }catch(e){console.error("❌ Erreur poll:", e);}
     };
     poll();
     const iv=setInterval(poll,5000);
