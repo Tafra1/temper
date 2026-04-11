@@ -3,6 +3,12 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Methods", "GET");
   const { endpoint, ...params } = req.query;
   const apiKey = process.env.GETSONGBPM_KEY;
+  
+  // Forcer type=song pour l'endpoint search
+  if (endpoint === "search" && !params.type) {
+    params.type = "song";
+  }
+  
   const queryString = new URLSearchParams({ api_key: apiKey, ...params }).toString();
   const url = `https://api.getsong.co/${endpoint}/?${queryString}`;
   try {
